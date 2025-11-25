@@ -9,6 +9,9 @@
 \usepackage{pifont}
 \usepackage{mdframed}
 \usepackage{url}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric}
+\usepackage[colorlinks=true, linkcolor=blue, urlcolor=blue, citecolor=blue]{hyperref}
 
 % Package and parameters to do a compact table of contents
 \usepackage{tocloft}
@@ -51,6 +54,8 @@
 \newcommand{\dak}[1]{\overline{\textsf{#1}}}
 \newcommand{\op}[2]{\act{r}(#1).\dak{w}(#1 #2)}
 \newcommand{\pEnd}{\mathbf{0}}
+\newcommand{\eqdef}{\mathrel{\triangleq}}
+\newcommand{\Traces}{\text{Traces}}
 
 \title{\vspace{-2em}CO661 - Theory and Practice of Concurrency \\
 {\Large{Notes on the Calculus of Communicating Systems (CCS)}}}
@@ -906,7 +911,61 @@ S_1
 
 \fi
 
-\section{Structural congruence}
+\section{Equivalence of Processes}
+In Milner’s CCS calculus, the notion of equivalence captures when two processes
+should be regarded as ``the same'' despite having different syntactic
+presentations. Several approaches exist, however, it is important that whatever
+notion of equivalence we choose this has to be a \emph{congruence} with respect
+to the constructors of the language.
+
+To give an idea of what this means imagine that you have a program written in some imperative language
+\[
+  f(x) \eqdef m := x; \texttt{ return } (x + 1);
+  % \mathrm{ then  } m := m - 1; return (x + 1) \mathrm{ else }
+  % 0
+\]
+This program is not (and should not) be equivalent to the program
+$inc(x) = \texttt{return } (x + 1);$.  The reason is the following. Say that you have a
+program $\mathbb{C}(g)$ which relies on a function
+$g : \mathbb{N} \to \mathbb{N}$ to calculate the increment of a natural number.
+We notice that there exists a program $\mathbb{C}$ such that if we give it the
+increment function it will work correctly and if we give it the function $f$ it
+will crash.
+
+This program can be defined as
+\begin{align*}
+  \mathbb{C}[g] \eqdef \;& m := 0; \\
+                       & g (1); \\
+                       & \texttt{if } m != 0 \texttt{ then } crash \texttt{ else } \texttt{return } ok
+\end{align*}
+This is a toy example to illustrate a broader problem with the choice of our equivalence relation.
+
+This toy example illustrates a broader issue with how we choose our equivalence
+relation. A more realistic scenario involves a program $\mathbb{C}$ that depends
+on an interface for sorting an array. Whether $\mathbb{C}$ can distinguish
+between two implementations of this interface depends on their behaviour. If the
+implementation is \emph{quicksort} or \emph{bubblesort}, then $\mathbb{C}$
+cannot tell the difference---the input/output behaviour of the two functions is
+the same.  But if the interface is implemented incorrectly, for example as the
+identity function on arrays, then $\mathbb{C}$ will begin to behave incorrectly
+as it assumes the output of the function will be an ordered array. In this case
+the choice of implementation becomes observable, revealing that the equivalence
+relation must be sensitive enough to detect such behavioural differences.
+Naturally, depending on the language we choose to model we need to take care of
+different behaviors.
+
+The moral here is that an equivalence relation should be a \emph{congruence} in
+the sense that if two programs $P,Q$ are equivalent, written $P \approx Q$ then
+for all contexts $\mathbb{C}$, also $\mathbb{C}[P] \approx \mathbb{C}[Q]$.
+
+For example, in CCS, it must be true that for all $P \approx Q$, then
+$(P \parallel R) \approx (P \parallel R)$ where the context here is
+$\mathbb{C}[X] = X \parallel R$. With this in mind we now go through various
+different ways of comparing processes and eventually we will find our right
+notion of equivalence.
+
+
+\subsection{Structural congruence}
 
 A basic notion of equality can be ascribed to processes which explains
 when processes are treated as being ``the same''. This equality
@@ -977,17 +1036,175 @@ algebraic manipulation. For example:
   P + (\mathbf{0} \mid P) \equiv P
 \end{align*}
 %
+\subsection{Trace Equivalence}
+A \emph{trace} of a process captures the sequence of
+\emph{visible actions} it can perform along some execution path. Formally, a
+trace is a finite sequence $\alpha_1 \alpha_2 \cdots \alpha_n$ of visible
+actions ($a$ or $\overline{a}$) such that there exists a sequence of
+transitions
+\[
+P \xrightarrow{\alpha_1} P_1 \xrightarrow{\alpha_2} P_2 \cdots \xrightarrow{\alpha_n} P_n
+\]
+in the operational semantics of CCS. The set of all finite traces of a process
+$P$ is denoted $\mathrm{Traces}(P)$. The empty trace $\varepsilon$ is always
+included. Internal actions $\tau$ are ignored in traces because they are
+invisible to the environment.
 
-\section{Bisimulation}
+To compute traces for a given process, one typically constructs its labelled
+transition system (LTS), ignores $\tau$-transitions, and enumerates all
+sequences of visible actions along finite paths starting from the initial
+state.
 
-Often we want to be able to reason about whether two processes behave
-in the same way. For example, when programming, we might come up with a
-refactoring or simplification which we want to ensure behaves in the
-same way as the old program. Or, we might want to use one process
-as a specification for another, giving a simple but inefficient
-definition as the specification, against which we want to compare the
-complicated but efficient implementation that we use in production. We can
-describe process equivalence by comparing process behaviour:
+\begin{example} Consider the processes
+\[
+P = a.b.P \quad \text{and} \quad R = a.Q \quad\text{with}\quad Q = b.a.Q.
+\]
+Intuitively, $P$ repeatedly performs $a$ then $b$, while $R$ performs $a$
+followed by $b$ then $a$, and so on. The traces of $P$ are
+\[
+\varepsilon, a, ab, aba, abab, \dots
+\]
+corresponding to any finite prefix of the infinite repetition $ab\,ab\,ab \dots$.
+For $R$, the first action is $a$, and $Q$ then produces $ba\,ba\,ba \dots$,
+so the finite prefixes are
+\[
+\varepsilon, a, ab, aba, abab, \dots
+\]
+which coincides with the traces of $P$.
+\end{example}
+This shows that although $P$ and $R$ have different internal structures in their
+LTSs, their traces are identical. Hence \emph{trace equivalence} is coarser than
+structural congruence, as it abstracts away from the precise arrangement of
+states and only records sequences of visible actions.
+
+Now consider the following example.
+\begin{example}
+Consider the two CCS processes
+\[
+P' = a.(b+c) \quad \text{and} \quad Q' = a.b + a.c.
+\]
+The process $P'$ performs the action $a$ first and then makes an internal choice
+between $b$ and $c$, while $Q'$ makes the choice between $a.b$ and $a.c$
+immediately. Computing the traces, we see that for $P'$ the possible sequences
+of visible actions are: doing nothing $\varepsilon$, performing only $a$,
+performing $a$ then $b$, and performing $a$ then $c$, giving
+\[
+\Traces(P') = \{\varepsilon, a, ab, ac\}.
+\]
+For $Q'$, the choice occurs before $a$, but the observable sequences of visible
+actions are identical: doing nothing $\varepsilon$, performing $a$ alone, then
+$a$ followed by $b$, and $a$ followed by $c$, yielding
+\[
+\Traces(Q') = \{\varepsilon, a, ab, ac\}.
+\]
+Hence, although the internal branching structure of the two processes differs,
+the sets of traces are the same, and therefore $P'$ and $Q'$ are
+\emph{trace-equivalent}.
+\end{example}
+
+The problem with this example, is that while the process
+$(P' || \overline{a}.\overline{b})$ can synchronise with $a$ and then $b$, the
+process $(Q' \parallel \overline{a}.\overline{b})$ might deadlock in case $Q'$
+decides to to choose to branch right. Hence the context
+$\mathbb{C}[\cdot] = [\cdot] \parallel \overline{a}.\overline{b}.0$ can tell the
+difference between $P'$ and $Q'$.
+
+Hence trace equivalence is not a congruence. The issue here is that trace
+equivalence does not distinguish between $P$ and $Q$ and so we need a stricter
+notion of equivalence.
+
+\subsection{Graph Isomorphisms}
+If we examine the processes from the perspective of \emph{graph
+isomorphism}, a stricter notion, the situation differs. A process can be
+represented as an LTS, a directed graph in which nodes correspond to process
+states, edges are labelled by actions, and the initial node corresponds to the
+process itself.
+
+% Let $P$ and $Q$ be CCS processes, and let their labelled transition systems
+% (LTSs) be
+% \[
+% \mathcal{L}(P) = (S_P, \rightarrow_P, s_{P_0}), \quad
+% \mathcal{L}(Q) = (S_Q, \rightarrow_Q, s_{Q_0}),
+% \]
+% where $S_P$ and $S_Q$ are sets of states, $\rightarrow_P, \rightarrow_Q \subseteq S \times \text{Act} \times S$ are the labelled transitions, and $s_{P_0}, s_{Q_0}$ are the initial states.
+
+% We say that $\mathcal{L}(P)$ and $\mathcal{L}(Q)$ are \emph{graph-isomorphic} iff there exists a bijection
+% \[
+% f: S_P \longrightarrow S_Q
+% \]
+% such that:
+% \begin{enumerate}
+%   \item The initial states correspond: $f(s_{P_0}) = s_{Q_0}$.
+%   \item Transition preservation: for all $s, s' \in S_P$ and $\alpha \in \text{Act}$,
+%   \[
+%     s \xrightarrow{\alpha}_P s' \quad \Longleftrightarrow \quad f(s) \xrightarrow{\alpha}_Q f(s').
+%   \]
+% \end{enumerate}
+
+Intuitively, two processes are graph-isomorphic if their LTSs have the
+\emph{same structure}: the same number of states connected in the same way by
+the same labelled actions. Graph isomorphism is a stricter equivalence than
+trace equivalence because it considers the \emph{branching and connectivity} of
+states, not just the sequences of observable actions.
+
+Now consider again the processes $P'$ and $Q'$ from previous section. These are not graph-isomorphic as the following picture depicts
+\begin{center}
+\begin{tikzpicture}[->, >=stealth, node distance=2cm]
+
+%------------------ P ------------------
+\node[circle, draw, minimum size=7mm] (P0) {$P'$};
+\node[circle, draw, minimum size=7mm, right=1.5cm of P0] (P1) {$(b+c)$};
+\node[circle, draw, minimum size=7mm, right=4.5cm of P0] (P2) {$0$};
+
+\draw (P0) edge node[above] {\texttt{a}} (P1);
+\draw (P1) edge[bend left=15] node[above] {\texttt{b}} (P2);
+\draw (P1) edge[bend right=15] node[above] {\texttt{c}} (P2);
+
+%------------------ Q ------------------
+\node[circle, draw, minimum size=7mm, right=6cm of P0] (Q0) {$Q'$};
+\node[circle, draw, minimum size=7mm, above right=0.3cm and 1cm of Q0] (Qb) {$b$};
+\node[circle, draw, minimum size=7mm, below right=0.3cm and 1cm of Q0] (Qc) {$c$};
+\node[circle, draw, minimum size=7mm, right=9cm of P0] (QZ) {$0$};
+
+\draw (Q0) edge[bend left=15] node[left] {\texttt{a}} (Qb);
+\draw (Q0) edge[bend right=15] node[left] {\texttt{a}} (Qc);
+\draw (Qb) edge[bend left=15] node[right] {\texttt{b}} (QZ);
+\draw (Qc) edge[bend right=15] node[right] {\texttt{c}} (QZ);
+\end{tikzpicture}
+\end{center}
+hence there is no requirement for them to be graph-isomorphic under any context.
+Therefore the condition that graph isomorphisms constitute a congruence is satisfied\footnote[1]{One can easily verify that graph isomorphisms are congruences in the category of graphs}.
+
+The problem is that this notion of equivalence is so strict that it distinguishes the previous example where $P$ and $R$ were trace equivalent. These two processes continue to be trace equivalent under all contexts, but they are not graph-isomorphic as their structure does not look like to have the same shape:
+\begin{center}
+  \begin{tikzpicture}[>=Stealth, node distance=12mm, every node/.style={font=\small}]
+    % P
+    \node (S0) [draw, rectangle, rounded corners] {$P$};
+    \node (S1) [draw, rectangle, rounded corners, right=of S0] {$b.P$};
+    \draw[->] (S0) to[bend left=15] node[above]{\texttt{a}} (S1);
+    \draw[->] (S1) to[bend left=15] node[below]{\texttt{b}} (S0);
+    % R
+    \node (T0) [draw, rectangle, rounded corners, right=25mm of S1] {$R$};
+    \node (T1) [draw, rectangle, rounded corners, right=of T0] {$Q$};
+    \node (T2) [draw, rectangle, rounded corners, below=of T1] {$a.Q$};
+    \draw[->] (T0) to node[above]{\texttt{a}} (T1);
+    \draw[->] (T1) to[bend left=15] node[right]{\texttt{b}} (T2);
+    \draw[->] (T2) to[bend left=15] node[left]{\texttt{a}} (T1);
+  \end{tikzpicture}
+\end{center}
+  This is now a problem because these two processes really should be regarded as equivalent.
+
+  Therefore we need something in between.
+
+\subsection{Bisimulation}
+
+Often we want to be able to reason about whether two processes behave in the
+same way. For example, when programming, we might come up with a refactoring or
+simplification which we want to ensure behaves in the same way as the old
+program. Or, we might want to use one process as a specification for another,
+giving a simple but inefficient definition as the specification, against which
+we want to compare the complicated but efficient implementation that we use in
+production. We can describe process equivalence by comparing process behaviour:
 i.e., do two processes behave in the same way?
 
 The notion of behavioural equivalence we study in this course is
@@ -1015,7 +1232,7 @@ P \mathcal{R} Q \qquad \Rightarrow & \forall P', l . \;\;\; P \xrightarrow{l} P'
 \end{definition}
 %
 \begin{definition}[Strong bisimulation]
-  Two processes $P$ and $Q$ are \emph{bisimilar} if $P \sim Q$
+  Two processes $P$ and $Q$ are \emph{bisimilar} iff $P \sim Q$
   where $\sim$ is the largest bisimulation, defined:
   %
   \begin{equation*}
